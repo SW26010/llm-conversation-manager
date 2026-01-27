@@ -5,6 +5,7 @@ This project is a tool to manage LLM conversations.
 ## Features
 
 - Using JSON file to store conversations
+- Every message has its timestamp
 - Using Python to manage conversations
 - Supporting Gemini form Google take out
 - Supporting Gemini Voyager export
@@ -18,3 +19,9 @@ This project is a tool to manage LLM conversations.
 2. Export Gemini conversations using [Gemini Voyager](https://chromewebstore.google.com/detail/kjdpnimcnfinmilocccippmododhceol?utm_source=item-share-cb) one by one
 3. Run the script to manage conversations
 4. Have fun with exploring your conversations
+
+## TODO
+
+- [ ] Support SQL
+- [ ] Support [Openrouter](https://openrouter.ai/) export
+- [ ] Support [RikkaHub](https://github.com/rikkahub/rikkahub) export

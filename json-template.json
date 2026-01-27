@@ -1,0 +1,59 @@
+{
+    "google-takeout-my-activity.json": [
+        {
+            "header": "Gemini Apps",
+            "title": "Prompted 你还能表现哪些丰富的形式，请尽可能在简短的回复中展示",
+            "time": "2026-01-27T05:30:00.673Z",
+            "products": [
+                "Gemini Apps"
+            ],
+            "activityControls": [
+                "Gemini Apps Activity"
+            ],
+            "safeHtmlItem": [
+                {
+                    "html": "\u003cp\u003e除了基础格式，我还能通过以下高级组件增强信息的\u003cstrong\u003e视觉表现力\u003c/strong\u003e：\u003c/p\u003e\n\u003chr\u003e\n\u003ch3\u003e🎨 进阶展示\u003c/h3\u003e\n\u003cul\u003e\n\u003cli\u003e\u003cstrong\u003e任务清单\u003c/strong\u003e：\n\u003cul\u003e\n\u003cli\u003e[x] 结构化思维\u003c/li\u003e\n\u003cli\u003e[ ] 实时交互\u003c/li\u003e\n\u003c/ul\u003e\n\u003c/li\u003e\n\u003cli\u003e\u003cstrong\u003e数学矩阵\u003c/strong\u003e：\n$$\\begin{pmatrix} 1 \u0026amp; 0 \\ 0 \u0026amp; 1 \\end{pmatrix}$$\u003c/li\u003e\n\u003cli\u003e\u003cstrong\u003e分步流程\u003c/strong\u003e：\n\u003col\u003e\n\u003cli\u003e\u003cstrong\u003e输入\u003c/strong\u003e：解析用户意图 🔍\u003c/li\u003e\n\u003cli\u003e\u003cstrong\u003e处理\u003c/strong\u003e：多模态推理 🧠\u003c/li\u003e\n\u003cli\u003e\u003cstrong\u003e输出\u003c/strong\u003e：精准响应 ✨\u003c/li\u003e\n\u003c/ol\u003e\n\u003c/li\u003e\n\u003c/ul\u003e\n\u003chr\u003e\n\u003cblockquote\u003e\n\u003cp\u003e[!TIP]\n我还支持生成 \u003cstrong\u003eMermaid 图表\u003c/strong\u003e、\u003cstrong\u003eSVG 绘图代码\u003c/strong\u003e以及\u003cstrong\u003e高保真图像/视频\u003c/strong\u003e。\u003c/p\u003e\n\u003c/blockquote\u003e\n\u003cp\u003e需要我为你绘制一张流程图，或者根据你的想法生成一段演示视频吗？\u003c/p\u003e\n"
+                }
+            ]
+        },
+        {
+            "header": "Gemini Apps",
+            "title": "Prompted 这是一条测试对话\n你要尽可能在短的回复中，表现以下内容：\n- Markdown富文本（表格，代码块）\n- latex公式\n- emoji等unicode字符\n- 插入外部链接或引用",
+            "time": "2026-01-27T05:28:08.105Z",
+            "products": [
+                "Gemini Apps"
+            ],
+            "activityControls": [
+                "Gemini Apps Activity"
+            ],
+            "safeHtmlItem": [
+                {
+                    "html": "\u003cp\u003e你好！收到测试信号。为了在最短篇幅内展示我的“全能包”，请看下方演示：\u003c/p\u003e\n\u003chr\u003e\n\u003ch3\u003e🚀 快速能力演示\u003c/h3\u003e\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u003ctable\u003e\u003cthead\u003e\u003ctr\u003e\u003cth align\u003d\"left\"\u003e维度\u003c/th\u003e\u003cth align\u003d\"left\"\u003e内容展示\u003c/th\u003e\u003c/tr\u003e\u003c/thead\u003e\u003ctbody\u003e\u003ctr\u003e\u003ctd align\u003d\"left\"\u003e\u003cstrong\u003e公式\u003c/strong\u003e\u003c/td\u003e\u003ctd align\u003d\"left\"\u003e质能方程：$E \u003d mc^2$\u003c/td\u003e\u003c/tr\u003e\u003ctr\u003e\u003ctd align\u003d\"left\"\u003e\u003cstrong\u003e链接\u003c/strong\u003e\u003c/td\u003e\u003ctd align\u003d\"left\"\u003e\u003ca href\u003d\"https://www.google.com\"\u003e访问 Google\u003c/a\u003e\u003c/td\u003e\u003c/tr\u003e\u003c/tbody\u003e\u003c/table\u003e\n\u003cpre\u003e\u003ccode\u003e# 这是一个 Python 代码块\ndef greet():\n    print(\u0026quot;Hello, Markdown! 🐍\u0026quot;)\n\u003c/code\u003e\u003c/pre\u003e\n\u003cblockquote\u003e\n\u003cp\u003e\u003cstrong\u003e引用说明\u003c/strong\u003e：Gemini 3 Flash 旨在平衡速度与智能，支持多种富文本解析。\u003c/p\u003e\n\u003c/blockquote\u003e\n\u003chr\u003e\n\u003cp\u003e想让我用这些格式为你生成一份特定的技术文档或学习笔记吗？\u003c/p\u003e\n"
+                }
+            ]
+        }
+    ],
+    "gemini-voyager.json": {
+        "format": "gemini-voyager.chat.v1",
+        "url": "https://gemini.google.com/app/0258fb0fb275df4a",
+        "exportedAt": "2026-01-27T05:36:01.803Z",
+        "count": 2,
+        "title": "Gemini 富文本能力演示",
+        "items": [
+            {
+                "user": "这是一条测试对话 你要尽可能在短的回复中，表现以下内容： - Markdown富文本（表格，代码块） - latex公式 - emoji等unicode字符 - 插入外部链接或引用",
+                "assistant": "你好！收到测试信号。为了在最短篇幅内展示我的“全能包”，请看下方演示：🚀 快速能力演示维度内容展示公式质能方程：E=mc2链接访问 GooglePython# 这是一个 Python 代码块 def greet(): print(\"Hello, Markdown! 🐍\") 引用说明：Gemini 3 Flash 旨在平衡速度与智能，支持多种富文本解析。想让我用这些格式为你生成一份特定的技术文档或学习笔记吗？",
+                "starred": false,
+                "userElement": {},
+                "assistantElement": {}
+            },
+            {
+                "user": "你还能表现哪些丰富的形式，请尽可能在简短的回复中展示",
+                "assistant": "除了基础格式，我还能通过以下高级组件增强信息的视觉表现力：🎨 进阶展示任务清单：[x] 结构化思维[ ] 实时交互数学矩阵： (1001)分步流程：输入：解析用户意图 🔍处理：多模态推理 🧠输出：精准响应 ✨[!TIP] 我还支持生成 Mermaid 图表、SVG 绘图代码以及高保真图像/视频。需要我为你绘制一张流程图，或者根据你的想法生成一段演示视频吗？",
+                "starred": false,
+                "userElement": {},
+                "assistantElement": {}
+            }
+        ]
+    }
+}
