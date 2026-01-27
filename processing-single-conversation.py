@@ -1,6 +1,7 @@
 import json
 import re
 import hashlib
+from datetime import datetime
 
 # ================= 配置文件名 =================
 MD_FILE_PATH = r'data\gemini-voyager-export\gemini-chat-20260127-160519.md'       # Voyager 导出的 MD
@@ -15,61 +16,124 @@ def clean_takeout_prompt(title):
     return title.strip()
     # TODO: check if the string is start with "Prompted "
 
+
 def parse_voyager_md(md_content):
     """
-    解析 Voyager MD 文件结构
-    返回: { 'meta': dict, 'turns': list }
+    解析 Voyager MD 文件结构 (增强版)
+    包含元数据验证、时间解析、页脚清洗及完整性检查
     """
     result = {'meta': {}, 'turns': []}
     
-    # 1. 提取 Meta 信息 (Title, Source URL/ID)
+    # ================= 0. 预处理：清洗页脚 =================
+    # TODO: 去除md文本后缀"\n---\n\n*Exported from [Gemini Voyager]"及之后内容
+    # 使用正则非贪婪匹配找到最后的分割线和 Export 签名
+    footer_pattern = r'\n---\n\n\*Exported from \[Gemini Voyager\].*$'
+    if re.search(footer_pattern, md_content, re.DOTALL):
+        md_content = re.sub(footer_pattern, '', md_content, flags=re.DOTALL).strip()
+    else:
+        # 也许是手动复制没有带 footer，或者格式变了，打印一个轻微提示
+        # print("ℹ️ Note: 未检测到标准 Voyager 页脚签名，可能是手动复制的内容。")
+        pass
+
     lines = md_content.split('\n')
+
+    # ================= 1. 提取 Meta 信息 =================
     
-    # 提取标题 (第一行 # 后面的内容)
-    for line in lines:
-        if line.startswith('# '):
-            # TODO: 如果当前行数太大了，则很有可能不是标题
-            result['meta']['title'] = line[2:].strip()
+    # --- 1.1 提取标题 (带行数限制的安全检查) ---
+    # TODO: 如果当前行数太大了，则很有可能不是标题
+    title_found = False
+    for idx, line in enumerate(lines):
+        if idx > 10: # 如果前10行都没找到标题，说明文件头可能坏了
             break
-            
-    # 提取 Source URL 和 ID
-    # 匹配模式: **Source**: [Gemini Chat](https://gemini.google.com/app/xxxx)
+        if line.startswith('# '):
+            result['meta']['title'] = line[2:].strip()
+            title_found = True
+            break
+    
+    if not title_found:
+        print("⚠️ Warning: 未在前10行检测到标准一级标题 (# Title)，将使用默认标题。")
+        result['meta']['title'] = "Untitled Chat"
+
+    # --- 1.2 提取 Source URL 和 ID ---
     source_pattern = r'\*\*Source\*\*: \[.*?\]\((https://gemini\.google\.com/app/([a-zA-Z0-9]+))\)'
     source_match = re.search(source_pattern, md_content)
+    
     if source_match:
         result['meta']['source_url'] = source_match.group(1)
-        result['meta']['id'] = source_match.group(2) # 优先用 URL 尾部 ID
+        result['meta']['id'] = source_match.group(2)
     else:
         # TODO: 如果找不到，这里得弹出一个警告
-        # 如果找不到 URL，用 Title 做个 Hash 当 ID (保底)
+        print(f"⚠️ Warning: 未找到 Gemini Source URL (对话ID)。将使用标题哈希作为临时 ID，这可能导致未来无法精确去重。")
         result['meta']['source_url'] = ""
-        result['meta']['id'] = hashlib.md5(result['meta'].get('title', '').encode()).hexdigest()[:16]
+        # 降级方案：使用 Title + 内容前20个字符做 Hash，尽量保证唯一
+        hash_source = (result['meta']['title'] + md_content[:50]).encode('utf-8')
+        result['meta']['id'] = hashlib.md5(hash_source).hexdigest()[:16]
 
+    # --- 1.3 提取并校验轮数 (Turns) ---
     # TODO: 提取总轮数"**Turns**: n"并于之后看到的最大轮数比较验证
-    # TODO: 提取voyager导出时间并转为ISO8601，格式: "**Date**: January 27, 2026 at 01:44 PM"(默认认为基于当前时区)，所以需要转换为UTC或使用当前时区
+    turns_match = re.search(r'\*\*Turns\*\*: (\d+)', md_content)
+    expected_turn_count = int(turns_match.group(1)) if turns_match else 0
 
-    # 2. 分割对话轮次 (Turns)
-    # 使用正则表达式按 "## Turn n" 分割
-    # split 后第一个元素通常是 header 信息，后面是各个 turn
-    # TODO: 去除md文本后缀"\n---\n\n*Exported from [Gemini Voyager]"及之后内容
+    # --- 1.4 提取导出时间 (Date) ---
+    # TODO: 提取voyager导出时间并转为ISO8601
+    # 格式示例: "**Date**: January 27, 2026 at 01:44 PM"
+    date_match = re.search(r'\*\*Date\*\*: (.*)', md_content)
+    if date_match:
+        date_str = date_match.group(1).strip()
+        try:
+            # 解析英文格式时间 (注意：这依赖系统locale支持英文月份，如果是在中文Win系统可能需要手动映射月份)
+            # 格式解析: %B=FullMonthName, %d=Day, %Y=Year, %I=12H, %M=Minute, %p=AM/PM
+            # 这里的时区处理比较复杂。Voyager 导出的是"生成文件时的时间"（通常是浏览器本地时间）。
+            # 为了简单且标准，我们暂且视为本地时间，并转为 ISO 格式字符串。
+            dt_obj = datetime.strptime(date_str, "%B %d, %Y at %I:%M %p")
+            result['meta']['exported_at'] = dt_obj.isoformat()
+        except ValueError as e:
+            print(f"⚠️ Warning: 时间格式解析失败 '{date_str}': {e}")
+            result['meta']['exported_at'] = None
+    else:
+        result['meta']['exported_at'] = None
+
+    # ================= 2. 分割与解析对话轮次 =================
+
+    # 使用正则分割，保留分割符以便后续调试（这里直接split丢弃分割符即可）
+    # 注意：前面已经清洗了 footer，所以最后一个 Turn 应该是干净的
     parts = re.split(r'## Turn \d+', md_content)
     
-    for part in parts[1:]: # 跳过头部 meta 信息
+    # parts[0] 是 header，跳过
+    for part in parts[1:]: 
+        if not part.strip(): continue # 跳过空块
+        
         turn_data = {}
         
-        # 提取 User 内容 (在 ### 👤 User 和 ### 🤖 Assistant 之间)
+        # 优化正则：增加非贪婪匹配和边界容错
         user_match = re.search(r'### 👤 User\s+(.*?)\s+### 🤖 Assistant', part, re.DOTALL)
-        # 提取 Assistant 内容 (在 ### 🤖 Assistant 之后)
         assistant_match = re.search(r'### 🤖 Assistant\s+(.*)', part, re.DOTALL)
         
         if user_match:
             turn_data['user_text'] = user_match.group(1).strip()
+        
         if assistant_match:
             turn_data['assistant_text'] = assistant_match.group(1).strip()
             
+        # 只有当至少有一方有内容时才添加
         if turn_data:
             result['turns'].append(turn_data)
-            
+
+    # ================= 3. 完整性校验 (Sanity Check) =================
+    
+    actual_turn_count = len(result['turns'])
+    
+    # 如果 Voyager 声明了轮数，但我们解析出来的数量不对
+    if expected_turn_count > 0 and expected_turn_count != actual_turn_count:
+        print(f"🚨 CRITICAL WARNING: 数据完整性受损！")
+        print(f"   元数据声明轮数: {expected_turn_count}")
+        print(f"   实际解析轮数: {actual_turn_count}")
+        print(f"   可能原因: 正则匹配失败或 Markdown 结构被破坏。建议人工检查文件: {result['meta']['title']}")
+        # 这里你可以选择 raise Exception 阻断流程，或者标记 meta 数据
+        result['meta']['integrity_check'] = False
+    else:
+        result['meta']['integrity_check'] = True
+
     return result
 
 def load_takeout_index(json_path):
