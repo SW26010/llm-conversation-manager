@@ -22,6 +22,7 @@ This project is a tool to manage LLM conversations.
 
 ## TODO
 
+- [ ] Support attachments (pictures, files, etc.)
 - [ ] Support Gemini Deepresearch export
 - [ ] Support SQL
 - [ ] Support [Openrouter](https://openrouter.ai/) export
