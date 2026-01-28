@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime
 
 # ================= 配置文件名 =================
-MD_FILE_PATH = r'data\gemini-voyager-export\gemini-chat-20260127-160519.md'       # Voyager 导出的 MD
+MD_FILE_PATH = r'data\gemini-voyager-export\chat.md'       # Voyager 导出的 MD
 TAKEOUT_FILE_PATH = r'data\google-takeout\我的活动记录.json'   # Google Takeout JSON
 OUTPUT_FILE_PATH = r'data\output\master_archive.json' # 结果文件
 # ============================================
@@ -337,8 +337,7 @@ def main():
                 entries_list.remove(matched_entry)
                 # 如果该 key 下空了，甚至可以 del takeout_index[target_key]
 
-        # --- 后续构建 JSON 逻辑保持不变 ---
-        timestamp = matched_entry['time'] if matched_entry else None
+        # --- 构建 JSON 逻辑 ---
 
         # 获取关键数据
         timestamp = matched_entry['time'] if matched_entry else None
@@ -352,9 +351,12 @@ def main():
         if i == 0 and timestamp:
             master_json['meta']['created_at'] = timestamp
 
+        # TODO: 检查根据对话顺序，时间戳时间是否是单调递增的，如不是则报错
+
         # --- 构建 User 消息 ---
         msg_user = {
             "id": f"{master_json['meta']['id']}_turn_{i+1}_user",
+            # TODO: master_json['meta']['id']和timestamp即可唯一确定user信息唯一性，所以修改user msg id定义
             "role": "user",
             "created_at": timestamp, # 只有匹配到了才有时间
             "content": {
@@ -367,6 +369,8 @@ def main():
         # --- 构建 Assistant 消息 ---
         msg_assistant = {
             "id": f"{master_json['meta']['id']}_turn_{i+1}_assistant",
+            # TODO: assisstant msg id也随user msg id衍生，去除“turn”字样
+            # 同时需预防同一user msg中，Assistant有多条回复，导致 id 冲突
             "role": "assistant",
             "parent_id": f"{master_json['meta']['id']}_turn_{i+1}_user", # 关联父消息
             # 身份为 Assistant，时无时间信息
