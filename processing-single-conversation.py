@@ -169,6 +169,98 @@ def load_takeout_index(json_path):
 
     return index
 
+
+# ================== 模糊查找相关逻辑 ==================
+
+def get_clean_segments(text):
+    """
+    将文本按空白字符切割，并按长度降序排列。
+    例如: "Hello World\nCheck this" -> ["Hello", "World", "Check", "this"] (排序后)
+    """
+    if not text:
+        return []
+    # split() 默认会去除 \n, \t, 空格等所有空白符
+    segments = text.split()
+    # 按长度降序排列，优先匹配长词/长句，准确率更高
+    return sorted(segments, key=len, reverse=True)
+
+def fuzzy_find_key(user_txt, all_keys):
+    """
+    TODO 1 实现: 键名查找失败的回退方法
+    策略: 拿 user_txt 的长片段去 all_keys 里通过包含关系(in) 筛选
+    """
+    # 1. 获取用户输入的所有“连续字符片段”
+    segments = get_clean_segments(user_txt)
+    
+    # 初始候选集是所有键
+    candidates = list(all_keys)
+    
+    # 2. 迭代筛选
+    for seg in segments:
+        # 找出包含当前片段的候选键
+        # 忽略大小写可能更稳健，但这里先严格按照你的要求做
+        new_candidates = [k for k in candidates if seg in k]
+        
+        if len(new_candidates) == 0:
+            # 当前片段可能包含 Markdown 符号或错别字，导致匹配不到，跳过它，尝试下一个片段
+            continue
+        elif len(new_candidates) == 1:
+            # 找到唯一结果，直接返回
+            return new_candidates[0]
+        else:
+            # 结果不唯一 (例如 seg="测试" 匹配到了 "测试A", "测试B")
+            # 将候选集缩小，进入下一轮循环，用下一个片段继续过滤
+            candidates = new_candidates
+            
+    # 3. 循环结束后的处理
+    # 如果最后剩下一个或多个，返回最长的那一个（概率上最接近）
+    if candidates:
+        return max(candidates, key=len)
+    
+    return None
+
+def disambiguate_entries(entries, assistant_txt):
+    """
+    TODO 2 实现: 若存在不止一项，根据 assistant 的信息判断
+    策略: 拿 assistant_txt 的长片段去 entry['html'] 里筛选
+    """
+    if not entries:
+        return None
+    if len(entries) == 1:
+        return entries[0]
+        
+    # 获取 Voyager 记录中 Assistant 回复的片段
+    segments = get_clean_segments(assistant_txt)
+    
+    candidates = entries[:]
+    
+    for seg in segments:
+        new_candidates = []
+        for entry in candidates:
+            # 获取 Takeout 中的 HTML (作为真值依据)
+            raw_html = ""
+            if 'safeHtmlItem' in entry and entry['safeHtmlItem']:
+                raw_html = entry['safeHtmlItem'][0].get('html', "")
+            
+            # 判断片段是否在 HTML 中
+            # 注意: HTML 包含标签，简单的 'in' 可能会因为标签截断文本而失败
+            # 但长片段匹配法通常能命中无标签的纯文本部分
+            if seg in raw_html:
+                new_candidates.append(entry)
+        
+        if len(new_candidates) == 1:
+            return new_candidates[0]
+        elif len(new_candidates) > 1:
+            # 缩小范围，继续下一轮
+            candidates = new_candidates
+        # 如果 == 0，说明这个片段在 HTML 里没找到 (可能是 Markdown 格式差异)，忽略该片段
+    
+    # 如果筛选到底还是有多个 (或者全都没命中)，默认返回时间最早的一个 (通常是 pop(-1))
+    # 但为了逻辑严谨，这里返回列表中的最后一个 (对应 Takeout 列表通常是倒序的逻辑)
+    return candidates[-1]
+
+
+
 def main():
     # 1. 读取并解析 MD
     try:
@@ -198,6 +290,9 @@ def main():
         "messages": []
     }
 
+    # 获取所有 Takeout 的键，用于模糊搜索
+    takeout_keys_cache = list(takeout_index.keys())
+
     # 4. 遍历合并
     for i, turn in enumerate(voyager_data['turns']):
         user_txt = turn.get('user_text', '')
@@ -205,16 +300,37 @@ def main():
         
         # --- 查找 Takeout 匹配 ---
         matched_entry = None
-        # TODO: 重写匹配逻辑，以函数方式
-        # 取user_txt中不包含换行符空格制表符等的最长连续字符，在takeout_index中查找
-        # 若结果唯一则返回，若不唯一则在候选列表中更换另一组连续字符，重复此过程，直到找到唯一结果
-        if user_txt in takeout_index and takeout_index[user_txt]:
-            # 取最早的一条（假设按时间倒序，pop() 取最后一条即最早的？需确认 takeout 顺序）
-            # Takeout 通常是时间倒序 (最新的在上面)。
-            # Voyager 也是时间倒序还是正序？通常 Chat 记录是正序 (Turn 1 是最早)。
-            # 这里简单处理：匹配到就用，用完弹出一个，避免重复匹配
-            matched_entry = takeout_index[user_txt].pop(-1) # 尝试弹出一项
-        
+        target_key = None
+
+        # --- 1. 尝试精确查找 ---
+        if user_txt in takeout_index:
+            target_key = user_txt
+        else:
+            # --- 2. 尝试模糊查找 (TODO 1) ---
+            print(f"🔄 Turn {i+1}: 精确匹配失败，尝试模糊查找: '{user_txt[:10]}...'")
+            fuzzy_key = fuzzy_find_key(user_txt, takeout_keys_cache)
+            if fuzzy_key:
+                print(f"   ✅ 模糊匹配成功: '{fuzzy_key[:20]}...'")
+                target_key = fuzzy_key
+            else:
+                print(f"   ❌ 模糊匹配失败，无法找到对应的时间戳。")
+
+        # --- 3. 获取并消歧义 (TODO 2) ---
+        if target_key:
+            entries_list = takeout_index[target_key]
+            
+            # 使用 Assistant 内容进行消歧义
+            matched_entry = disambiguate_entries(entries_list, assistant_txt)
+            
+            # 重要: 匹配完后，从索引列表中移除该条目，防止下一轮重复匹配
+            # (因为 disambiguate 返回的是引用，我们需要在 list 中找到它并移除)
+            if matched_entry in entries_list:
+                entries_list.remove(matched_entry)
+                # 如果该 key 下空了，甚至可以 del takeout_index[target_key]
+
+        # --- 后续构建 JSON 逻辑保持不变 ---
+        timestamp = matched_entry['time'] if matched_entry else None
+
         # 获取关键数据
         timestamp = matched_entry['time'] if matched_entry else None
         raw_html = None
@@ -251,9 +367,6 @@ def main():
             }
         }
         master_json['messages'].append(msg_assistant)
-
-        if not matched_entry:
-            print(f"⚠️ Warning: Turn {i+1} 的用户提问 '{user_txt[:15]}...' 未在 Takeout 中找到匹配，时间戳缺失。")
 
     # 5. 输出
     with open(OUTPUT_FILE_PATH, 'w', encoding='utf-8') as f:
