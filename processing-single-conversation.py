@@ -13,11 +13,20 @@ def clean_takeout_prompt(title):
     """从 Takeout 标题中提取用户 Prompt (去掉 'Prompted ' 前缀)"""
     if title.startswith("Prompted "):
         return title[9:].strip()
-    print(f"⚠️ Warning: 暂不受支持的prompt类型: '{title}'")
-    # TODO: 研究研究非对话记录是怎么个事儿
-    # startwith "Created Gemini Canvas titled "
-    # startwith "Gave feedback: "
-    # startwith "Used an Assistant feature"
+
+    # 处理其他可能的 Gemini 活动类型，防止脚本因未知类型崩溃
+    known_prefixes = [
+        "Created Gemini Canvas titled ", # 深度研究或互动测试
+        "Gave feedback: ",
+        "Used an Assistant feature",
+        "Selected preferred draft"
+    ]
+
+    if any(title.startswith(prefix) for prefix in known_prefixes):
+        print(f"ℹ️ Info: 跳过非对话类活动: '{title[:30]}...'")
+    else:
+        print(f"⚠️ Warning: 暂不受支持的prompt类型: '{title[:30]}'")
+    # 原样保留预期外的类型，相信后人的智慧
     return title.strip()
     
 
