@@ -230,7 +230,7 @@ def fuzzy_find_key(user_txt, all_keys):
 
 def disambiguate_entries(entries, assistant_txt):
     """
-    TODO 2 实现: 若存在不止一项，根据 assistant 的信息判断
+    实现: 若存在不止一项，根据 assistant 的信息判断
     策略: 拿 assistant_txt 的长片段去 entry['html'] 里筛选
     """
     if not entries:
@@ -302,6 +302,9 @@ def main():
     # 获取所有 Takeout 的键，用于模糊搜索
     takeout_keys_cache = list(takeout_index.keys())
 
+    # 用于时间戳单调性检查
+    last_valid_dt = None
+
     # 4. 遍历合并
     for i, turn in enumerate(voyager_data['turns']):
         user_txt = turn.get('user_text', '')
@@ -315,7 +318,7 @@ def main():
         if user_txt in takeout_index:
             target_key = user_txt
         else:
-            # --- 2. 尝试模糊查找 (TODO 1) ---
+            # --- 2. 尝试模糊查找 ---
             print(f"🔄 Turn {i+1}: 精确匹配失败，尝试模糊查找: '{user_txt[:10]}...'")
             fuzzy_key = fuzzy_find_key(user_txt, takeout_keys_cache)
             if fuzzy_key:
@@ -324,7 +327,7 @@ def main():
             else:
                 print(f"   ❌ 模糊匹配失败，无法找到对应的时间戳。")
 
-        # --- 3. 获取并消歧义 (TODO 2) ---
+        # --- 3. 获取并消歧义 ---
         if target_key:
             entries_list = takeout_index[target_key]
             
@@ -340,27 +343,38 @@ def main():
         # --- 构建 JSON 逻辑 ---
 
         # 获取关键数据
-        timestamp = matched_entry['time'] if matched_entry else None
+        timestamp = datetime.fromisoformat(matched_entry['time']) if matched_entry else None
+        # fromisoformat会帮我们检查matched_entry['time']拿到的是不是合法的时间格式
         raw_html = None
         if matched_entry and 'safeHtmlItem' in matched_entry:
              # Takeout 的 HTML 藏在 safeHtmlItem 列表里
              if len(matched_entry['safeHtmlItem']) > 0:
                  raw_html = matched_entry['safeHtmlItem'][0].get('html')
 
-        # 如果是第一轮对话，设置整个对话的创建时间
-        if i == 0 and timestamp:
-            master_json['meta']['created_at'] = timestamp
+        # 检查根据对话顺序，时间戳时间是否是单调递增的，如不是则报错
+        if timestamp and last_valid_dt:
+            if timestamp < last_valid_dt:
+                print(f"❌ Error: Turn {i+1}: 时间戳不是单调递增的，前一个时间戳是 {last_valid_dt}，当前时间戳是 {timestamp}")
+                raise ValueError("时间戳非单调递增，归档终止。")
+            last_valid_dt = timestamp
 
-        # TODO: 检查根据对话顺序，时间戳时间是否是单调递增的，如不是则报错
+        elif timestamp and not last_valid_dt: # 此时应当是第一轮，i=0
+            last_valid_dt = timestamp
+            master_json['meta']['created_at'] = timestamp.isoformat(timespec='milliseconds')
+            if i != 0: # 相当罕见情况，即前几轮都没时间戳
+                print(f"⚠️ 警告: Turn {i+1}: 发现时间戳，但前几轮没有时间戳，将使用当前时间戳作为对话创建时间")
+
+        else: # takeout阶段未匹配到相关条目，则不设置时间戳
+            pass
 
         # --- 构建 User 消息 ---
         msg_user = {
             "id": f"{master_json['meta']['id']}_turn_{i+1}_user",
-            # TODO: master_json['meta']['id']和timestamp即可唯一确定user信息唯一性，所以修改user msg id定义
+            # TODO: UUID v7，使用消息的时间戳
             "role": "user",
-            "created_at": timestamp, # 只有匹配到了才有时间
+            "created_at": timestamp.isoformat(timespec='milliseconds') if timestamp else None, # 只有匹配到了才有时间
             "content": {
-                # 按照你的要求：如果是 User，取 Takeout 的 Prompt (去掉前缀)
+                # 如果是 User，取 Takeout 的 Prompt (去掉前缀)
                 "text": clean_takeout_prompt(matched_entry['title']) if matched_entry else user_txt
             }
         }
@@ -369,11 +383,10 @@ def main():
         # --- 构建 Assistant 消息 ---
         msg_assistant = {
             "id": f"{master_json['meta']['id']}_turn_{i+1}_assistant",
-            # TODO: assisstant msg id也随user msg id衍生，去除“turn”字样
-            # 同时需预防同一user msg中，Assistant有多条回复，导致 id 冲突
+            # TODO: UUID v7，使用消息的时间戳+20s
             "role": "assistant",
             "parent_id": f"{master_json['meta']['id']}_turn_{i+1}_user", # 关联父消息
-            # 身份为 Assistant，时无时间信息
+            "created_at": None, # 身份为 Assistant，时无时间信息
             "content": {
                 "text": assistant_txt, # Voyager 的 MD
                 "original_html": raw_html # Takeout 的 HTML
