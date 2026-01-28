@@ -13,8 +13,13 @@ def clean_takeout_prompt(title):
     """从 Takeout 标题中提取用户 Prompt (去掉 'Prompted ' 前缀)"""
     if title.startswith("Prompted "):
         return title[9:].strip()
+    print(f"⚠️ Warning: 暂不受支持的prompt类型: '{title}'")
+    # TODO: 研究研究非对话记录是怎么个事儿
+    # startwith "Created Gemini Canvas titled "
+    # startwith "Gave feedback: "
+    # startwith "Used an Assistant feature"
     return title.strip()
-    # TODO: check if the string is start with "Prompted "
+    
 
 
 def parse_voyager_md(md_content):
@@ -25,7 +30,7 @@ def parse_voyager_md(md_content):
     result = {'meta': {}, 'turns': []}
     
     # ================= 0. 预处理：清洗页脚 =================
-    # TODO: 去除md文本后缀"\n---\n\n*Exported from [Gemini Voyager]"及之后内容
+    # 去除md文本后缀"\n---\n\n*Exported from [Gemini Voyager]"及之后内容
     # 使用正则非贪婪匹配找到最后的分割线和 Export 签名
     footer_pattern = r'\n---\n\n\*Exported from \[Gemini Voyager\].*$'
     if re.search(footer_pattern, md_content, re.DOTALL):
@@ -40,7 +45,7 @@ def parse_voyager_md(md_content):
     # ================= 1. 提取 Meta 信息 =================
     
     # --- 1.1 提取标题 (带行数限制的安全检查) ---
-    # TODO: 如果当前行数太大了，则很有可能不是标题
+    # 如果当前行数太大了，则很有可能不是标题
     title_found = False
     for idx, line in enumerate(lines):
         if idx > 10: # 如果前10行都没找到标题，说明文件头可能坏了
@@ -62,7 +67,7 @@ def parse_voyager_md(md_content):
         result['meta']['source_url'] = source_match.group(1)
         result['meta']['id'] = source_match.group(2)
     else:
-        # TODO: 如果找不到，这里得弹出一个警告
+        # 如果找不到，这里得弹出一个警告
         print(f"⚠️ Warning: 未找到 Gemini Source URL (对话ID)。将使用标题哈希作为临时 ID，这可能导致未来无法精确去重。")
         result['meta']['source_url'] = ""
         # 降级方案：使用 Title + 内容前20个字符做 Hash，尽量保证唯一
@@ -70,12 +75,12 @@ def parse_voyager_md(md_content):
         result['meta']['id'] = hashlib.md5(hash_source).hexdigest()[:16]
 
     # --- 1.3 提取并校验轮数 (Turns) ---
-    # TODO: 提取总轮数"**Turns**: n"并于之后看到的最大轮数比较验证
+    # 提取总轮数"**Turns**: n"并于之后看到的最大轮数比较验证
     turns_match = re.search(r'\*\*Turns\*\*: (\d+)', md_content)
     expected_turn_count = int(turns_match.group(1)) if turns_match else 0
 
     # --- 1.4 提取导出时间 (Date) ---
-    # TODO: 提取voyager导出时间并转为ISO8601
+    # 提取voyager导出时间并转为ISO8601
     # 格式示例: "**Date**: January 27, 2026 at 01:44 PM"
     date_match = re.search(r'\*\*Date\*\*: (.*)', md_content)
     if date_match:
@@ -154,6 +159,7 @@ def load_takeout_index(json_path):
     for entry in data:
         if 'title' in entry:
             clean_prompt = clean_takeout_prompt(entry['title'])
+            # TODO: do not clean the prompt this time, just use the original title
             # 注意：如果同一句话问了多次，这里只会存最后一次的索引（简单起见）
             # 改进版可以用 list 存储多个同名 prompt
             if clean_prompt not in index:
@@ -186,7 +192,8 @@ def main():
             "title": voyager_data['meta'].get('title'),
             "source_url": voyager_data['meta'].get('source_url'),
             "created_at": None, # 稍后填充
-            "tags": ["Gemini_Archive", "Imported"]
+            "last_collected_at": voyager_data['meta'].get('exported_at')
+            # 暂时不需要tags
         },
         "messages": []
     }
@@ -200,7 +207,7 @@ def main():
         matched_entry = None
         # TODO: 重写匹配逻辑，以函数方式
         # 取user_txt中不包含换行符空格制表符等的最长连续字符，在takeout_index中查找
-        # 若结果唯一则返回，若不唯一则更换另一组连续字符，重复此过程，直到找到唯一结果或遍历完所有可能
+        # 若结果唯一则返回，若不唯一则在候选列表中更换另一组连续字符，重复此过程，直到找到唯一结果
         if user_txt in takeout_index and takeout_index[user_txt]:
             # 取最早的一条（假设按时间倒序，pop() 取最后一条即最早的？需确认 takeout 顺序）
             # Takeout 通常是时间倒序 (最新的在上面)。

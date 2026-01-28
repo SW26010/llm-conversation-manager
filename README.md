@@ -22,6 +22,7 @@ This project is a tool to manage LLM conversations.
 
 ## TODO
 
+- [ ] Support Gemini Deepresearch export
 - [ ] Support SQL
 - [ ] Support [Openrouter](https://openrouter.ai/) export
 - [ ] Support [RikkaHub](https://github.com/rikkahub/rikkahub) export
