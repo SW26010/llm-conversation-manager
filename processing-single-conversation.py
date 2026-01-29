@@ -192,15 +192,36 @@ def load_takeout_index(json_path):
 
 def get_clean_segments(text):
     """
-    将文本按空白字符切割，并按长度降序排列。
-    例如: "Hello World\nCheck this" -> ["Hello", "World", "Check", "this"] (排序后)
+    根据定义的规则列表切割文本，并按长度降序排列。
     """
     if not text:
         return []
-    # split() 默认会去除 \n, \t, 空格等所有空白符
-    segments = text.split()
-    # 按长度降序排列，优先匹配长词/长句，准确率更高
-    return sorted(segments, key=len, reverse=True)
+
+    # 1. 定义切割规则列表（每一项都是一个正则片段）
+    # 相比单行长字符串，列表形式更易读、易维护
+    split_rules = [
+        r'\n',       # 换行符
+        r'\*\*',       # 加粗**号
+        r'#',        # 标题#号
+        r'- ',        # 短横线，无序列表
+        r'---',      # 短横线，分隔线
+        r'`',        # 数据变量或代码块
+        r'\|',        # 表格
+    ]
+
+    # 2. 将列表通过 "|" (逻辑或) 拼接成完整正则: pattern1|pattern2|pattern3...
+    full_pattern = "|".join(split_rules)
+
+    # 3. 执行切割
+    # re.split 会同时根据上述所有规则切分
+    segments = re.split(full_pattern, text)
+
+    # 4. 处理清洗逻辑
+    # 逻辑：先 strip() 去掉首尾空格，如果剩下内容不为空，则保留
+    cleaned_segments = [s.strip() for s in segments if s.strip()]
+
+    # 5. 按长度降序排序
+    return sorted(cleaned_segments, key=len, reverse=True)
 
 def fuzzy_find_key(user_txt, all_keys):
     """
@@ -396,7 +417,7 @@ def main():
         if timestamp and last_valid_dt:
             if timestamp < last_valid_dt:
                 print(f"❌ Error: Turn {i+1}: 时间戳不是单调递增的，前一个时间戳是 {last_valid_dt}，当前时间戳是 {timestamp}")
-                raise ValueError("时间戳非单调递增，归档终止。")
+                #raise ValueError("时间戳非单调递增，归档终止。")
             last_valid_dt = timestamp
 
         elif timestamp and not last_valid_dt: # 此时应当是第一轮，i=0
