@@ -1,7 +1,7 @@
 import json
 import re
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # ================= 配置文件名 =================
 MD_FILE_PATH = r'data\gemini-voyager-export\chat.md'       # Voyager 导出的 MD
@@ -268,7 +268,39 @@ def disambiguate_entries(entries, assistant_txt):
     # 但为了逻辑严谨，这里返回列表中的最后一个 (对应 Takeout 列表通常是倒序的逻辑)
     return candidates[-1]
 
+# =================== UUID v7 ===================
 
+import uuid
+import secrets
+from datetime import datetime, timezone
+
+def generate_uuidv7(dt: datetime) -> str:
+    """
+    基于给定时间生成 RFC 9562 UUIDv7。
+    逻辑：分段构建 (Timestamp | Ver | Rand A | Var | Rand B)
+    """
+    # 1. 提取毫秒级时间戳 (48 bits)
+    # 确保使用 UTC 时间戳，若为 naive time 则视为本地时间并转为 UTC
+    ts_ms = int(dt.timestamp() * 1000)
+    
+    # 2. 生成随机部分
+    # rand_a: 12 bits (填充在 Version 之后)
+    # rand_b: 62 bits (填充在 Variant 之后)
+    rand_a = secrets.randbits(12)
+    rand_b = secrets.randbits(62)
+    
+    # 3. 按位组装 128 位整数
+    uuid_int = (
+        (ts_ms << 80)   |  # 48 bits: Unix Timestamp
+        (0x7   << 76)   |  #  4 bits: Version 7
+        (rand_a << 64)  |  # 12 bits: Random A
+        (0x2   << 62)   |  #  2 bits: Variant 2
+        rand_b             # 62 bits: Random B
+    )
+    
+    return str(uuid.UUID(int=uuid_int))
+
+# =================== 主逻辑 ===================
 
 def main():
     # 1. 读取并解析 MD
@@ -368,9 +400,10 @@ def main():
             pass
 
         # --- 构建 User 消息 ---
+        msg_user_id = generate_uuidv7(timestamp if timestamp else datetime.now(timezone.utc))
+        # TODO: 如果timestamp缺失时，应如何处理uuid
         msg_user = {
-            "id": f"{master_json['meta']['id']}_turn_{i+1}_user",
-            # TODO: UUID v7，使用消息的时间戳
+            "id": msg_user_id,
             "role": "user",
             "created_at": timestamp.isoformat(timespec='milliseconds') if timestamp else None, # 只有匹配到了才有时间
             "content": {
@@ -381,11 +414,11 @@ def main():
         master_json['messages'].append(msg_user)
 
         # --- 构建 Assistant 消息 ---
+        msg_assistant_id = generate_uuidv7(timestamp + timedelta(seconds=20) if timestamp else datetime.now(timezone.utc))
         msg_assistant = {
-            "id": f"{master_json['meta']['id']}_turn_{i+1}_assistant",
-            # TODO: UUID v7，使用消息的时间戳+20s
+            "id": msg_assistant_id,
             "role": "assistant",
-            "parent_id": f"{master_json['meta']['id']}_turn_{i+1}_user", # 关联父消息
+            "parent_id": msg_user_id, # 关联父消息
             "created_at": None, # 身份为 Assistant，时无时间信息
             "content": {
                 "text": assistant_txt, # Voyager 的 MD
