@@ -25,6 +25,8 @@ This project is a tool to manage LLM conversations.
 - [ ] Support attachments (users input pictures, files, etc.)
 - [ ] Batch archiving from multiple Voyager exports
 - [ ] Incremental archiving without duplication
+
+## Future Plans
 - [ ] Support Gemini Deepresearch export
 - [ ] Support SQL
 - [ ] Support [Openrouter](https://openrouter.ai/) export
