@@ -257,6 +257,8 @@ def fuzzy_find_key(user_txt, all_keys):
         return max(candidates, key=len)
     
     return None
+    
+# TODO: 基于类似原理写一个针对assistant_txt的模糊查找函数，充分利用get_clean_segments
 
 def disambiguate_entries(entries, assistant_txt):
     """
@@ -388,6 +390,9 @@ def main():
                 target_key = fuzzy_key
             else:
                 print(f"   ❌ 模糊匹配失败，无法找到对应的时间戳。")
+        # TODO: 优先user_txt精确查找，因为它的格式几乎不变，且字典查找复杂度O(N)
+        # 当精确查找无结果/多结果时，直接扔给assistant_txt的模糊查找
+        # assistant_txt长度长，结构多，格式不一致，适合模糊查找
 
         # --- 3. 获取并消歧义 ---
         if target_key:
