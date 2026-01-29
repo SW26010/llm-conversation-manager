@@ -150,9 +150,19 @@ def parse_voyager_md(md_content):
 
     return result
 
+# TODO: 对用户信息的附件检查：
+# user_text 是否包含附件，内容匹配规则：
+# 匹配 第一个有内容的行为 "*[This turn includes uploaded images]*"，
+# 随后若干行内容为"![description](url)"，（注意行与行之间可能存在空行）此时统计附件的数量
+# 随后即用户真正发送的文字内容，所以当匹配到之后，应当舍弃之前的内容。注意，当有附件时，用户信息可能为空。
+
+# TODO: 在takeout中匹配带附件的用户信息
+# 鉴于用户文字信息可能为空，所以默认进行内容检查。如果为空（或仅为空格，回车等），则直接使用根据assistant_text内容搜寻匹配。
+# 匹配成功后，应顺带核对附件数量是否一致
+
+
 def load_takeout_index(json_path):
 
-    # TODO: 使用某种方式处理每条JSON的title，使其能高效查找定位O(1)
     """
     加载 Takeout JSON 并建立索引
     Key: 用户 Prompt (文本) -> Value: 完整 Entry (包含时间, HTML)
@@ -174,7 +184,6 @@ def load_takeout_index(json_path):
             if clean_prompt not in index:
                 index[clean_prompt] = []
             index[clean_prompt].append(entry)
-            # TODO: check if all the 'title' is unique
 
     return index
 
