@@ -23,7 +23,8 @@ def clean_takeout_prompt(title):
     ]
 
     if any(title.startswith(prefix) for prefix in known_prefixes):
-        print(f"ℹ️ Info: 跳过非对话类活动: '{title[:30]}...'")
+        # print(f"ℹ️ Info: 跳过非对话类活动: '{title[:30]}...'")
+        pass
     else:
         print(f"⚠️ Warning: 暂不受支持的prompt类型: '{title[:30]}'")
     # 原样保留预期外的类型，相信后人的智慧
@@ -225,40 +226,39 @@ def get_clean_segments(text):
 
 def fuzzy_find_key(user_txt, all_keys):
     """
-    TODO 1 实现: 键名查找失败的回退方法
-    策略: 拿 user_txt 的长片段去 all_keys 里通过包含关系(in) 筛选
+    使用用户文本片段对候选键进行漏斗式筛选，旨在寻找唯一匹配项。
+    
+    Args:
+        user_txt (str): 用户输入的目标文本。
+        all_keys (iterable): 所有的候选键字符串列表。
+        
+    Returns:
+        str or None: 若筛选出唯一匹配键则返回该键，否则返回 None。
     """
-    # 1. 获取用户输入的所有“连续字符片段”
+    # 获取排序后的有效片段 (假设外部已定义该函数)
     segments = get_clean_segments(user_txt)
     
-    # 初始候选集是所有键
+    # 初始候选集
     candidates = list(all_keys)
     
-    # 2. 迭代筛选
     for seg in segments:
-        # 找出包含当前片段的候选键
-        # 忽略大小写可能更稳健，但这里先严格按照你的要求做
-        new_candidates = [k for k in candidates if seg in k]
+        # 在当前候选集中筛选包含 seg 的项
+        current_matches = [k for k in candidates if seg in k]
         
-        if len(new_candidates) == 0:
-            # 当前片段可能包含 Markdown 符号或错别字，导致匹配不到，跳过它，尝试下一个片段
+        # 情况 A: 筛选后为空 -> 说明 seg 可能是噪音或错别字
+        # 策略: 忽略当前 seg，保持原有 candidates，继续尝试下一个 seg
+        if not current_matches:
             continue
-        elif len(new_candidates) == 1:
-            # 找到唯一结果，直接返回
-            return new_candidates[0]
-        else:
-            # 结果不唯一 (例如 seg="测试" 匹配到了 "测试A", "测试B")
-            # 将候选集缩小，进入下一轮循环，用下一个片段继续过滤
-            candidates = new_candidates
             
-    # 3. 循环结束后的处理
-    # 如果最后剩下一个或多个，返回最长的那一个（概率上最接近）
-    if candidates:
-        return max(candidates, key=len)
-    
+        # updates: 存在匹配项，更新候选集（收敛范围）
+        candidates = current_matches
+        
+        # 情况 B: 命中唯一结果 -> 成功，提前返回
+        if len(candidates) == 1:
+            return candidates[0]
+            
+    # 循环结束：若仍剩余多个候选或 0 个，均视为匹配失败
     return None
-    
-# TODO: 基于类似原理写一个针对assistant_txt的模糊查找函数，充分利用get_clean_segments
 
 def disambiguate_entries(entries, assistant_txt):
     """
