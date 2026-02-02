@@ -1,6 +1,7 @@
 import json
 import re
 import hashlib
+from rapidfuzz import fuzz
 from datetime import datetime, timedelta
 from typing import Tuple, Dict, Any
 
@@ -241,22 +242,19 @@ def get_clean_segments(text):
     # 5. 按长度降序排序
     return sorted(cleaned_segments, key=len, reverse=True)
 
-def fuzzy_find_key(user_txt, all_keys):
+def fuzzy_match(query, candidates):
     """
     使用用户文本片段对候选键进行漏斗式筛选，旨在寻找唯一匹配项。
     
     Args:
-        user_txt (str): 用户输入的目标文本。
-        all_keys (iterable): 所有的候选键字符串列表。
+        query (str): 用户输入的目标文本。
+        candidates (iterable): 所有的候选键字符串列表。
         
     Returns:
         str or None: 若筛选出唯一匹配键则返回该键，否则返回 None。
     """
     # 获取排序后的有效片段 (假设外部已定义该函数)
-    segments = get_clean_segments(user_txt)
-    
-    # 初始候选集
-    candidates = list(all_keys)
+    segments = get_clean_segments(query)
     
     for seg in segments:
         # 在当前候选集中筛选包含 seg 的项
@@ -272,6 +270,8 @@ def fuzzy_find_key(user_txt, all_keys):
         
         # 情况 B: 命中唯一结果 -> 成功，提前返回
         if len(candidates) == 1:
+            score = fuzz.ratio(query, candidates[0])
+            print(f"模糊匹配成功: {len(seg)}/{len(candidates[0])} , Similarity Score: {score}")
             return candidates[0]
             
     # 循环结束：若仍剩余多个候选或 0 个，均视为匹配失败
@@ -363,7 +363,7 @@ def main():
             # assistant_txt长度长，结构多，格式不一致，适合模糊查找
             # --- 2. 尝试模糊查找 ---
             print(f"🔄 Turn {i+1}: 用户提示词 '{user_txt[:10]}...'精确匹配失败，尝试助手回复 '{assistant_txt[:10]}...'模糊查找")
-            fuzzy_key = fuzzy_find_key(assistant_txt, assistant_keys_cache)
+            fuzzy_key = fuzzy_match(assistant_txt, assistant_keys_cache)
             if fuzzy_key:
                 print(f"   ✅ 模糊匹配成功: '{fuzzy_key[:20]}...'")
                 matched_entry = assistant_index[fuzzy_key]
