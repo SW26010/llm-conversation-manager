@@ -153,15 +153,51 @@ def parse_voyager_md(md_content):
 
     return result
 
-# TODO: 对用户信息的附件检查：
-# user_text 是否包含附件，内容匹配规则：
-# 匹配 第一个有内容的行为 "*[This turn includes uploaded images]*"，
-# 随后若干行内容为"![description](url)"，（注意行与行之间可能存在空行）此时统计附件的数量
-# 随后即用户真正发送的文字内容，所以当匹配到之后，应当舍弃之前的内容。注意，当有附件时，用户信息可能为空。
+# 识别 voyager 中某条信息的附件数量
+def count_attachments(user_text):
+    """
+    解析 user_text 中的附件标记并返回数量
+    """
+    # 提取所有非空行
+    lines = [line.strip() for line in user_text.splitlines() if line.strip()]
+    
+    # 校验首行内容是否符合协议标识
+    if not lines or lines[0] != "*[This turn includes uploaded images]*":
+        return 0
+    
+    # 统计符合 ![description](url) 模式的行数
+    # ^ 匹配行首，$ 匹配行尾，确保整行符合 Markdown 图片语法
+    attachments = re.findall(r'^!\[.*?\]\(.*?\)$', user_text, re.MULTILINE)
+    
+    return len(attachments)
 
-# TODO: 在takeout中匹配带附件的用户信息
-# 鉴于用户文字信息可能为空，所以默认进行内容检查。如果为空（或仅为空格，回车等），则直接使用根据assistant_text内容搜寻匹配。
-# 匹配成功后，应顺带核对附件数量是否一致
+
+# 识别 takeout 中的附件
+def extract_attachments(matched_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    从 matched_entry 中提取附件列表并校验数量。
+    """
+    # 1. 获取 subtitles 字段，若无则直接返回空列表
+    subtitles = matched_entry.get("subtitles")
+    if not subtitles:
+        return []
+
+    # 2. 解析索引 0 的描述信息获取预期数量
+    # 格式示例: "Attached 4 files." 或 "Attached 1 file."
+    header_text = subtitles[0].get("name", "")
+    match = re.search(r"Attached (\d+) file", header_text)
+    
+    # 若无法匹配数字，默认预期为 0 (或根据需求抛出异常，此处保持简洁设为 0)
+    expected_count = int(match.group(1)) if match else 0
+
+    # 3. 提取实际附件 (从索引 1 开始)
+    attachments = subtitles[1:]
+
+    # 4. 校验数量是否一致 (若不一致将中断程序，提示不匹配)
+    if len(attachments) != expected_count:
+        raise ValueError(f"附件数量校验失败: 标称 {expected_count}, 实际 {len(attachments)}")
+
+    return attachments
 
 
 def load_takeout_index(json_path: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -397,6 +433,15 @@ def main():
         else: # takeout阶段未匹配到相关条目，则不设置时间戳
             pass
 
+        # ---------------- 对用户信息的附件检查 -----------------
+        voyager_attachment_count = count_attachments(user_txt)
+        takeout_attachments = extract_attachments(matched_entry)
+
+        if voyager_attachment_count > 0 or takeout_attachments:
+            print(f"存在附件，voyager数量为{voyager_attachment_count}，takeout数量为{len(takeout_attachments)}")
+            if voyager_attachment_count != len(takeout_attachments):
+                raise ValueError("附件数量不匹配")
+
         # --- 构建 User 消息 ---
         msg_user_id = generate_uuidv7(timestamp if timestamp else datetime.now(timezone.utc))
         # TODO: 如果timestamp缺失时，应如何处理uuid
@@ -409,6 +454,7 @@ def main():
                 "text": clean_takeout_prompt(matched_entry['title']) if matched_entry else user_txt
             }
         }
+        if takeout_attachments: msg_user["content"]["attachments"] = takeout_attachments
         master_json['messages'].append(msg_user)
 
         # --- 构建 Assistant 消息 ---
@@ -436,7 +482,6 @@ if __name__ == "__main__":
 
 '''
 这是目前我优化后的代码。现在我的重点工作是对附件格式的支持。
-在修改的过程中，我发现对assistant_text内容的模糊查找似乎可以和fuzzy_find_key函数复用
 并且在主逻辑的构建信息环节，无论是否有无附件，对user_text的处理应当是一致的，也可以复用
 还有新的对是否存在附件检测的逻辑。。。。
 我发现我应当重构代码为函数，尤其是主实现逻辑main，否则后期的维护将越来越困难。
