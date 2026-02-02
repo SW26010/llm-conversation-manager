@@ -2,6 +2,7 @@ import json
 import re
 import hashlib
 from datetime import datetime, timedelta
+from typing import Tuple, Dict, Any
 
 # ================= 配置文件名 =================
 MD_FILE_PATH = r'data\gemini-voyager-export\chat.md'       # Voyager 导出的 MD
@@ -162,31 +163,47 @@ def parse_voyager_md(md_content):
 # 匹配成功后，应顺带核对附件数量是否一致
 
 
-def load_takeout_index(json_path):
+def load_takeout_index(json_path: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     """
-    加载 Takeout JSON 并建立索引
-    Key: 用户 Prompt (文本) -> Value: 完整 Entry (包含时间, HTML)
+    加载 Takeout JSON 并建立两套索引
+    Key: 用户 Prompt (文本) (用于O1复杂度哈希查找)
+    Key2: 助理回复 (文本) (用于ON复杂度模糊查找)
+    -> Value: 完整 Entry (包含时间, HTML)
     """
-    try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        print(f"错误: 找不到文件 {json_path}")
-        return {}
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
 
-    index = {}
+    user_index: Dict[str, Any] = {}
+    assistant_index: Dict[str, Any] = {}
+
     for entry in data:
-        if 'title' in entry:
-            clean_prompt = clean_takeout_prompt(entry['title'])
-            # TODO: do not clean the prompt this time, just use the original title
-            # 注意：如果同一句话问了多次，这里只会存最后一次的索引（简单起见）
-            # 改进版可以用 list 存储多个同名 prompt
-            if clean_prompt not in index:
-                index[clean_prompt] = []
-            index[clean_prompt].append(entry)
+        try:
+            # 建立用户索引
+            raw_user_text = clean_takeout_prompt(entry['title'])
+            user_text = raw_user_text
+            user_text_counter = 1
 
-    return index
+            while user_text in user_index:
+            # 当出现重复时，上层函数会回退到模糊查找
+            # 所以这里只需要保证键名唯一即可
+                user_text = f"{raw_user_text}_{user_text_counter}"
+                print(f"警告: 用户信息条目'{raw_user_text[:10]}...'存在重复，已重命名")
+                user_text_counter += 1
+
+            user_index[user_text] = entry
+
+            # 建立助理索引
+            assistant_text = entry['safeHtmlItem'][0]['html']
+            assistant_index[assistant_text] = entry
+
+        except Exception as e:
+            # 抓住不存在条目错误
+            # print(f"错误: 不存在的条目 {entry}: {e}")
+            continue
+    print(f"加载 Takeout 索引成功，共 {len(data)} 条记录：\n - 有效用户索引: {len(user_index)} 条\n - 有效助手索引: {len(assistant_index)} 条")
+
+    return user_index, assistant_index
 
 
 # ================== 模糊查找相关逻辑 ==================
@@ -260,46 +277,6 @@ def fuzzy_find_key(user_txt, all_keys):
     # 循环结束：若仍剩余多个候选或 0 个，均视为匹配失败
     return None
 
-def disambiguate_entries(entries, assistant_txt):
-    """
-    实现: 若存在不止一项，根据 assistant 的信息判断
-    策略: 拿 assistant_txt 的长片段去 entry['html'] 里筛选
-    """
-    if not entries:
-        return None
-    if len(entries) == 1:
-        return entries[0]
-        
-    # 获取 Voyager 记录中 Assistant 回复的片段
-    segments = get_clean_segments(assistant_txt)
-    
-    candidates = entries[:]
-    
-    for seg in segments:
-        new_candidates = []
-        for entry in candidates:
-            # 获取 Takeout 中的 HTML (作为真值依据)
-            raw_html = ""
-            if 'safeHtmlItem' in entry and entry['safeHtmlItem']:
-                raw_html = entry['safeHtmlItem'][0].get('html', "")
-            
-            # 判断片段是否在 HTML 中
-            # 注意: HTML 包含标签，简单的 'in' 可能会因为标签截断文本而失败
-            # 但长片段匹配法通常能命中无标签的纯文本部分
-            if seg in raw_html:
-                new_candidates.append(entry)
-        
-        if len(new_candidates) == 1:
-            return new_candidates[0]
-        elif len(new_candidates) > 1:
-            # 缩小范围，继续下一轮
-            candidates = new_candidates
-        # 如果 == 0，说明这个片段在 HTML 里没找到 (可能是 Markdown 格式差异)，忽略该片段
-    
-    # 如果筛选到底还是有多个 (或者全都没命中)，默认返回时间最早的一个 (通常是 pop(-1))
-    # 但为了逻辑严谨，这里返回列表中的最后一个 (对应 Takeout 列表通常是倒序的逻辑)
-    return candidates[-1]
-
 # =================== UUID v7 ===================
 
 import uuid
@@ -335,7 +312,10 @@ def generate_uuidv7(dt: datetime) -> str:
 # =================== 主逻辑 ===================
 
 def main():
-    # 1. 读取并解析 MD
+    # 1. 加载 Takeout 索引
+    user_index, assistant_index = load_takeout_index(TAKEOUT_FILE_PATH)
+
+    # 2. 读取并解析 MD
     try:
         with open(MD_FILE_PATH, 'r', encoding='utf-8') as f:
             md_content = f.read()
@@ -345,10 +325,6 @@ def main():
 
     voyager_data = parse_voyager_md(md_content)
     print(f"解析 MD 成功: 标题 '{voyager_data['meta'].get('title')}', 共 {len(voyager_data['turns'])} 轮对话")
-
-    # 2. 加载 Takeout 索引
-    takeout_index = load_takeout_index(TAKEOUT_FILE_PATH)
-    print(f"加载 Takeout 索引成功，共 {len(takeout_index)} 条记录")
 
     # 3. 构建 Master JSON
     master_json = {
@@ -363,8 +339,8 @@ def main():
         "messages": []
     }
 
-    # 获取所有 Takeout 的键，用于模糊搜索
-    takeout_keys_cache = list(takeout_index.keys())
+    # 获取所有 Takeout 的assistant键，用于模糊搜索
+    assistant_keys_cache = list(assistant_index.keys())
 
     # 用于时间戳单调性检查
     last_valid_dt = None
@@ -379,33 +355,20 @@ def main():
         target_key = None
 
         # --- 1. 尝试精确查找 ---
-        if user_txt in takeout_index:
-            target_key = user_txt
+        # 优先user_txt精确查找，因为它的格式几乎不变，且字典查找复杂度O(N)
+        if user_txt in user_index:
+            matched_entry = user_index[user_txt]
         else:
+            # 当精确查找无结果/多结果时，直接扔给assistant_txt的模糊查找
+            # assistant_txt长度长，结构多，格式不一致，适合模糊查找
             # --- 2. 尝试模糊查找 ---
-            print(f"🔄 Turn {i+1}: 精确匹配失败，尝试模糊查找: '{user_txt[:10]}...'")
-            fuzzy_key = fuzzy_find_key(user_txt, takeout_keys_cache)
+            print(f"🔄 Turn {i+1}: 用户提示词 '{user_txt[:10]}...'精确匹配失败，尝试助手回复 '{assistant_txt[:10]}...'模糊查找")
+            fuzzy_key = fuzzy_find_key(assistant_txt, assistant_keys_cache)
             if fuzzy_key:
                 print(f"   ✅ 模糊匹配成功: '{fuzzy_key[:20]}...'")
-                target_key = fuzzy_key
+                matched_entry = assistant_index[fuzzy_key]
             else:
                 print(f"   ❌ 模糊匹配失败，无法找到对应的时间戳。")
-        # TODO: 优先user_txt精确查找，因为它的格式几乎不变，且字典查找复杂度O(N)
-        # 当精确查找无结果/多结果时，直接扔给assistant_txt的模糊查找
-        # assistant_txt长度长，结构多，格式不一致，适合模糊查找
-
-        # --- 3. 获取并消歧义 ---
-        if target_key:
-            entries_list = takeout_index[target_key]
-            
-            # 使用 Assistant 内容进行消歧义
-            matched_entry = disambiguate_entries(entries_list, assistant_txt)
-            
-            # 重要: 匹配完后，从索引列表中移除该条目，防止下一轮重复匹配
-            # (因为 disambiguate 返回的是引用，我们需要在 list 中找到它并移除)
-            if matched_entry in entries_list:
-                entries_list.remove(matched_entry)
-                # 如果该 key 下空了，甚至可以 del takeout_index[target_key]
 
         # --- 构建 JSON 逻辑 ---
 
