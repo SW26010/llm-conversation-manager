@@ -440,7 +440,7 @@ def build_conversation_master_data(
         if timestamp and last_valid_dt:
             if timestamp < last_valid_dt:
                 print(f"❌ Error: Turn {i+1}: 时间戳不是单调递增的，前一个时间戳是 {last_valid_dt}，当前时间戳是 {timestamp}")
-                #raise ValueError("时间戳非单调递增，归档终止。")
+                raise ValueError("时间戳非单调递增，归档终止。")
             last_valid_dt = timestamp
 
         elif timestamp and not last_valid_dt: # 此时应当是第一轮，i=0
