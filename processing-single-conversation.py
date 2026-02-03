@@ -369,51 +369,52 @@ def generate_uuidv7(dt: datetime) -> str:
 
 # =================== 主逻辑 ===================
 
-def main():
-    # 1. 加载 Takeout 索引
-    user_index, assistant_index = load_takeout_index(TAKEOUT_FILE_PATH)
-
-    # 2. 读取并解析 MD
-    try:
-        with open(MD_FILE_PATH, 'r', encoding='utf-8') as f:
-            md_content = f.read()
-    except FileNotFoundError:
-        print(f"错误: 找不到文件 {MD_FILE_PATH}")
-        return
-
-    voyager_data = parse_voyager_md(md_content)
-    print(f"解析 MD 成功: 标题 '{voyager_data['meta'].get('title')}', 共 {len(voyager_data['turns'])} 轮对话")
-
-    # 3. 构建 Master JSON
+def build_conversation_master_data(
+    voyager_data: dict, 
+    user_index: dict, 
+    assistant_index: dict,
+    assistant_keys_cache: list
+) -> dict:
+    """
+    核心处理函数：合并 Voyager 解析数据与 Takeout 索引数据。
+    
+    Args:
+        voyager_data: 解析 MD 文件得到的字典数据
+        user_index: Takeout User 索引
+        assistant_index: Takeout Assistant 索引
+        assistant_keys_cache: 用于模糊匹配的 Assistant 键列表
+        
+    Returns:
+        dict: 构建完成的 Master JSON 对象
+        
+    Raises:
+        ValueError: 当遇到时间戳非单调递增或附件数量不匹配等逻辑错误时
+    """
+    
+    # 1. 初始化 Master JSON 结构
     master_json = {
         "meta": {
             "id": voyager_data['meta'].get('id'),
             "title": voyager_data['meta'].get('title'),
             "source_url": voyager_data['meta'].get('source_url'),
-            "created_at": None, # 稍后填充
+            "created_at": None,  # 稍后根据第一条有效消息填充
             "last_collected_at": voyager_data['meta'].get('exported_at')
-            # 暂时不需要tags
         },
         "messages": []
     }
 
-    # 获取所有 Takeout 的assistant键，用于模糊搜索
-    assistant_keys_cache = list(assistant_index.keys())
-
     # 用于时间戳单调性检查
     last_valid_dt = None
 
-    # 4. 遍历合并
+    # 2. 遍历合并对话轮次
     for i, turn in enumerate(voyager_data['turns']):
         user_txt = turn.get('user_text', '')
         assistant_txt = turn.get('assistant_text', '')
         
-        # --- 查找 Takeout 匹配 ---
+        # --- A. 查找 Takeout 匹配 ---
         matched_entry = None
-        target_key = None
 
-        # --- 1. 尝试精确查找 ---
-        # 优先user_txt精确查找，因为它的格式几乎不变，且字典查找复杂度O(N)
+        # 优先精确查找 (User Text)
         if user_txt in user_index:
             matched_entry = user_index[user_txt]
         else:
@@ -428,8 +429,8 @@ def main():
             else:
                 print(f"   ❌ 模糊匹配失败，无法找到对应的时间戳。")
 
-        # --- 构建 JSON 逻辑 ---
-
+        # --- B. 数据提取与校验 ---
+        
         # 获取关键数据
         timestamp = datetime.fromisoformat(matched_entry['time']) if matched_entry else None
         # fromisoformat会帮我们检查matched_entry['time']拿到的是不是合法的时间格式
@@ -492,11 +493,45 @@ def main():
         }
         master_json['messages'].append(msg_assistant)
 
-    # 5. 输出
-    with open(OUTPUT_FILE_PATH, 'w', encoding='utf-8') as f:
-        json.dump(master_json, f, indent=2, ensure_ascii=False)
+    return master_json
+
+
+def main():
+    # 1. 准备数据 (IO 操作)
+    user_index, assistant_index = load_takeout_index(TAKEOUT_FILE_PATH)
+    # 提前缓存 keys，大幅优化循环内的性能
+    assistant_keys_cache = list(assistant_index.keys()) 
     
-    print(f"✅ 成功生成 Master JSON: {OUTPUT_FILE_PATH}")
+    try:
+        with open(MD_FILE_PATH, 'r', encoding='utf-8') as f:
+            md_content = f.read()
+    except FileNotFoundError:
+        print(f"❌ 错误: 找不到文件 {MD_FILE_PATH}")
+        return
+
+    # 2. 解析 MD
+    voyager_data = parse_voyager_md(md_content)
+
+    # 3. 核心处理 (纯逻辑，捕获特定异常)
+    try:
+        result_json = build_conversation_master_data(
+            voyager_data, 
+            user_index, 
+            assistant_index, 
+            assistant_keys_cache
+        )
+    except ValueError as e:
+        print(f"❌ 数据逻辑错误: {e}")
+        return
+    except Exception as e:
+        print(f"❌ 未知错误: {e}")
+        raise # 致命错误继续抛出
+
+    # 4. 写入结果 (IO 操作)
+    with open(OUTPUT_FILE_PATH, 'w', encoding='utf-8') as f:
+        json.dump(result_json, f, indent=2, ensure_ascii=False)
+    
+    print(f"✅ 处理完成: {OUTPUT_FILE_PATH}")
 
 if __name__ == "__main__":
     main()
