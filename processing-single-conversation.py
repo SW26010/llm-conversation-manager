@@ -466,7 +466,6 @@ def main():
 
         # --- 构建 User 消息 ---
         msg_user_id = generate_uuidv7(timestamp if timestamp else datetime.now(timezone.utc))
-        # TODO: 如果timestamp缺失时，应如何处理uuid
         msg_user = {
             "id": msg_user_id,
             "role": "user",
