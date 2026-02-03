@@ -198,8 +198,13 @@ def extract_attachments(matched_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
     if len(attachments) != expected_count:
         raise ValueError(f"附件数量校验失败: 标称 {expected_count}, 实际 {len(attachments)}")
 
-    # TODO: 对附件json对象和文件名的检查，保留真正能用的文件名，其它要不要都无所谓
-
+    # 对附件json对象和文件名的检查，保留真正能用的文件名，其它要不要都无所谓
+    for attachment in attachments:
+        if attachment["name"].startswith("-  "):
+            attachment["name"] = attachment["name"][3:]
+        else:
+            raise ValueError(f"附件名称校验失败: {attachment['name']}")
+    
     return attachments
 
 
