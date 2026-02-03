@@ -4,6 +4,7 @@ import hashlib
 from rapidfuzz import fuzz
 from datetime import datetime, timedelta
 from typing import Tuple, Dict, Any
+from collections import defaultdict
 
 # ================= 配置文件名 =================
 MD_FILE_PATH = r'data\gemini-voyager-export\chat.md'       # Voyager 导出的 MD
@@ -197,6 +198,8 @@ def extract_attachments(matched_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
     if len(attachments) != expected_count:
         raise ValueError(f"附件数量校验失败: 标称 {expected_count}, 实际 {len(attachments)}")
 
+    # TODO: 对附件json对象和文件名的检查，保留真正能用的文件名，其它要不要都无所谓
+
     return attachments
 
 
@@ -214,23 +217,34 @@ def load_takeout_index(json_path: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     user_index: Dict[str, Any] = {}
     assistant_index: Dict[str, Any] = {}
 
+    # 计数器：记录每个 clean_title 出现的次数
+    prompt_counts: Dict[str, int] = defaultdict(int)
+
     for entry in data:
-        try:
-            # 建立用户索引
-            raw_user_text = clean_takeout_prompt(entry['title'])
-            user_text = raw_user_text
-            user_text_counter = 1
+        
+        # 建立用户索引
+        clean_title = clean_takeout_prompt(entry['title'])
+        
+        # 计数器：记录每个 clean_title 出现的次数
+        prompt_counts[clean_title] += 1
+        current_count = prompt_counts[clean_title]
+        
+        if current_count == 1:  # 首次出现：正常占位
+            user_index[clean_title] = entry
+        elif current_count == 2:  # 第二次出现：触发“迁移逻辑”
+            # 1. 取出之前占位的第一条数据
+            first_entry = user_index.pop(clean_title)
+            # 2. 为第一条数据添加后缀 _0
+            user_index[f"{clean_title}_0"] = first_entry
+            # 3. 为当前（第二条）数据添加后缀 _1
+            user_index[f"{clean_title}_1"] = entry
+            # 注意：此时 user_index[clean_title] 已不存在
 
-            while user_text in user_index:
-            # 当出现重复时，上层函数会回退到模糊查找
-            # 所以这里只需要保证键名唯一即可
-                user_text = f"{raw_user_text}_{user_text_counter}"
-                print(f"警告: 用户信息条目'{raw_user_text[:10]}...'存在重复，已重命名")
-                user_text_counter += 1
+        else:  # 第三次及以后：直接添加后缀
+            # current_count 为 3 时，对应后缀 _2
+            user_index[f"{clean_title}_{current_count - 1}"] = entry
 
-            user_index[user_text] = entry
-
-            # 建立助理索引
+        try:  # 建立助理索引
             assistant_text = entry['safeHtmlItem'][0]['html']
             assistant_index[assistant_text] = entry
 
@@ -238,7 +252,10 @@ def load_takeout_index(json_path: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             # 抓住不存在条目错误
             # print(f"错误: 不存在的条目 {entry}: {e}")
             continue
-    print(f"加载 Takeout 索引成功，共 {len(data)} 条记录：\n - 有效用户索引: {len(user_index)} 条\n - 有效助手索引: {len(assistant_index)} 条")
+
+    print(f"索引构建完成 (总记录: {len(data)})：\n"
+          f" - 用户索引 (User Prompts): {len(user_index)} 条\n"
+          f" - 助理索引 (Assistant Replies): {len(assistant_index)} 条")
 
     return user_index, assistant_index
 
