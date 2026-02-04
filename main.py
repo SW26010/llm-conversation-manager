@@ -370,7 +370,7 @@ def build_conversation_master_data(
     user_index: dict, 
     assistant_index: dict,
     assistant_keys_cache: list
-) -> dict:
+) -> Tuple[dict, List[str]]:
     """
     核心处理函数：合并 Voyager 解析数据与 Takeout 索引数据。
     
@@ -398,6 +398,9 @@ def build_conversation_master_data(
         },
         "messages": []
     }
+
+    # 用于收集该对话所有相关附件的本地路径
+    collected_paths = []
 
     # 用于时间戳单调性检查
     last_valid_dt = None
@@ -460,6 +463,7 @@ def build_conversation_master_data(
             print(f"存在附件，voyager数量为{voyager_attachment_count}，takeout数量为{len(takeout_attachments)}")
             if voyager_attachment_count != len(takeout_attachments):
                 raise ValueError("附件数量不匹配")
+            collected_paths.extend(att["url"] for att in takeout_attachments)
 
         # --- 构建 User 消息 ---
         msg_user_id = generate_uuidv7(timestamp if timestamp else datetime.now(timezone.utc))
@@ -489,12 +493,13 @@ def build_conversation_master_data(
         }
         master_json['messages'].append(msg_assistant)
 
-    return master_json
+    return master_json, collected_paths
 
 
 import os
 import glob
 import json
+import shutil
 
 # ================= 配置常量 =================
 # 使用 Raw String (r"...") 避免 Windows 路径反斜杠转义问题
@@ -508,6 +513,9 @@ def main():
     if not os.path.exists(OUTPUT_FOLDER):
         os.makedirs(OUTPUT_FOLDER)
         print(f"📁 已创建输出目录: {OUTPUT_FOLDER}")
+
+    # 确定 Takeout 的根目录 (用于查找附件)
+    takeout_root_dir = os.path.dirname(TAKEOUT_FILE_PATH)
 
     # 1. 准备数据 (加载一次索引，多次复用)
     print("⏳ 正在加载 Takeout 索引...")
@@ -543,7 +551,7 @@ def main():
                 continue
 
             # --- 核心逻辑合并 ---
-            result_json = build_conversation_master_data(
+            result_json, collected_paths = build_conversation_master_data(
                 voyager_data, 
                 user_index, 
                 assistant_index, 
@@ -555,6 +563,17 @@ def main():
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(result_json, f, indent=2, ensure_ascii=False)
             
+
+            # --- 保存附件 ---
+            # 在TAKEOUT_FILE_PATH的同级目录下，根据collected_paths找到附件，复制到OUTPUT_FOLDER\assets-{file_id}\目录下
+            if collected_paths:
+                assets_folder = os.path.join(OUTPUT_FOLDER, f"assets-{file_id}")
+                os.makedirs(assets_folder) 
+                for att_url in collected_paths:
+                    src_path = os.path.normpath(os.path.join(takeout_root_dir, att_url))
+                    shutil.copy2(src_path, assets_folder)
+            
+
             # 成功时不刷屏，保持控制台整洁
             # print(f"  ✅ 保存成功") 
 
@@ -562,6 +581,12 @@ def main():
             # 逻辑错误（如时间戳倒流），跳过当前文件，继续下一个
             print(f"  ⚠️ 数据校验失败: {ve} (已跳过)")
             continue 
+
+        except (FileNotFoundError, PermissionError) as fe:
+            # 文件读写基础错误
+            print(f"\n  ❌ 文件操作错误: {fe}")
+            continue
+
         except Exception as e:
             # 其他未知错误（如解析崩溃），记录并继续
             print(f"  ❌ 处理出错: {e} (已跳过)")
