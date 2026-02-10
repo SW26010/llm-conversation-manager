@@ -502,10 +502,9 @@ import json
 import shutil
 
 # ================= 配置常量 =================
-# 使用 Raw String (r"...") 避免 Windows 路径反斜杠转义问题
-VOYAGER_FOLDER = r'data\gemini-voyager-export'
-TAKEOUT_FILE_PATH = r'data\google-takeout\我的活动记录.json'
-OUTPUT_FOLDER = r'data\output'
+VOYAGER_FOLDER = os.path.join("data", "gemini-voyager-export")
+TAKEOUT_FILE_PATH = os.path.join("data", "google-takeout", "我的活动记录.json")
+OUTPUT_FOLDER = os.path.join("data", "output")
 
 def main():
     # 0. 环境预检
