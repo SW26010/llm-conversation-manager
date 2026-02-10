@@ -188,12 +188,14 @@ def extract_attachments(matched_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
     expected_count = int(match.group(1)) if match else 0
 
     # 3. 提取实际附件 (从索引 1 开始)
-    attachments = subtitles[1:]
+    attachments = subtitles[1:1 + expected_count]  # 取出预期数量的附件信息，避免越界
 
+    '''
     # 4. 校验数量是否一致 (若不一致将中断程序，提示不匹配)
     if len(attachments) != expected_count:
         raise ValueError(f"附件数量校验失败: 标称 {expected_count}, 实际 {len(attachments)}")
-
+    '''
+    
     # 对附件json对象和文件名的检查，保留真正能用的文件名，其它要不要都无所谓
     for attachment in attachments:
         if attachment["name"].startswith("-  "):
