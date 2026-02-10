@@ -506,26 +506,28 @@ VOYAGER_FOLDER = os.path.join("data", "gemini-voyager-export")
 TAKEOUT_FILE_PATH = os.path.join("data", "google-takeout", "我的活动记录.json")
 OUTPUT_FOLDER = os.path.join("data", "output")
 
+
+
 def main():
+    """
+    主处理流程：加载索引 -> 遍历 Markdown -> 合并数据 -> 导出 JSON 与附件
+    """
     # 0. 环境预检
-    # 确保输出目录存在，不存在则创建
     if not os.path.exists(OUTPUT_FOLDER):
         os.makedirs(OUTPUT_FOLDER)
-        print(f"📁 已创建输出目录: {OUTPUT_FOLDER}")
+        print(f"📁 已创建输出根目录: {OUTPUT_FOLDER}")
 
-    # 确定 Takeout 的根目录 (用于查找附件)
     takeout_root_dir = os.path.dirname(TAKEOUT_FILE_PATH)
 
-    # 1. 准备数据 (加载一次索引，多次复用)
+    # 1. 准备数据
     print("⏳ 正在加载 Takeout 索引...")
     try:
         user_index, assistant_index = load_takeout_index(TAKEOUT_FILE_PATH)
-        assistant_keys_cache = list(assistant_index.keys()) # 缓存 Keys
+        assistant_keys_cache = list(assistant_index.keys())
     except Exception as e:
         print(f"❌ 致命错误: 索引加载失败，程序终止。\n原因: {e}")
         return
 
-    # 获取目录下所有 .md 文件
     md_files = glob.glob(os.path.join(VOYAGER_FOLDER, "*.md"))
     total_files = len(md_files)
     print(f"📂 扫描到 {total_files} 个 Markdown 文件，开始处理...\n")
@@ -533,8 +535,7 @@ def main():
     # 2. 批量遍历处理
     for i, md_file_path in enumerate(md_files):
         file_name = os.path.basename(md_file_path)
-        # 显示进度，例如 [1/50]
-        print(f"[{i+1}/{total_files}] 正在处理: {file_name}")
+        print(f"[{i + 1}/{total_files}] 正在处理: {file_name}")
 
         try:
             # --- 读取与解析 ---
@@ -542,52 +543,75 @@ def main():
                 md_content = f.read()
 
             voyager_data = parse_voyager_md(md_content)
-            
-            # 获取 ID 用于输出文件名 (必须确保 ID 存在)
+
+            # ID 校验
             file_id = voyager_data.get('meta', {}).get('id')
             if not file_id:
-                print(f"  ⚠️ 跳过: 无法在元数据中找到 ID")
+                print("  ⚠️ 跳过: 元数据缺失 ID")
                 continue
 
             # --- 核心逻辑合并 ---
             result_json, collected_paths = build_conversation_master_data(
-                voyager_data, 
-                user_index, 
-                assistant_index, 
+                voyager_data,
+                user_index,
+                assistant_index,
                 assistant_keys_cache
             )
 
-            # --- 写入结果 ---
-            output_path = os.path.join(OUTPUT_FOLDER, f"{file_id}.json")
-            with open(output_path, 'w', encoding='utf-8') as f:
+            # --- 准备路径元数据 ---
+            # 1. 获取并格式化日期 (YYYYMMDD)
+            raw_date = result_json['meta'].get('created_at', '')
+            try:
+                # 兼容带 Z 和不带 Z 的 ISO 格式
+                dt = datetime.fromisoformat(raw_date.replace('Z', '+00:00'))
+                date_str = dt.strftime('%Y%m%d')
+            except ValueError:
+                date_str = "00000000"  # 日期解析失败的回退
+
+            # 2. 清洗并截断标题 (空格转下划线 + 非法字符清洗)
+            raw_title = result_json['meta'].get('title', 'Untitled')
+            # 变更点：先将空格替换为下划线，再去除非法字符
+            safe_title = raw_title.replace(' ', '_')
+            safe_title = re.sub(r'[<>:"/\\|?*]', '', safe_title)
+            safe_title = safe_title.strip()[:30]  # 截断至30字符
+
+            # 3. 组装目录名: Date_Title_ID
+            folder_name = f"{date_str}_{safe_title}_{file_id}"
+            item_folder_path = os.path.join(OUTPUT_FOLDER, folder_name)
+
+            # 创建条目专属文件夹
+            os.makedirs(item_folder_path, exist_ok=True)
+
+            # --- 写入结果 (data.json) ---
+            output_json_path = os.path.join(item_folder_path, "data.json")
+            with open(output_json_path, 'w', encoding='utf-8') as f:
                 json.dump(result_json, f, indent=2, ensure_ascii=False)
-            
 
-            # --- 保存附件 ---
-            # 在TAKEOUT_FILE_PATH的同级目录下，根据collected_paths找到附件，复制到OUTPUT_FOLDER\assets-{file_id}\目录下
+            # --- 处理附件 (assets) ---
             if collected_paths:
-                assets_folder = os.path.join(OUTPUT_FOLDER, f"assets-{file_id}")
-                os.makedirs(assets_folder) 
-                for att_url in collected_paths:
-                    src_path = os.path.normpath(os.path.join(takeout_root_dir, att_url))
-                    shutil.copy2(src_path, assets_folder)
-            
+                assets_folder = os.path.join(item_folder_path, "assets")
+                if not os.path.exists(assets_folder):
+                    os.makedirs(assets_folder)
 
-            # 成功时不刷屏，保持控制台整洁
-            # print(f"  ✅ 保存成功") 
+                for att_url in collected_paths:
+                    # 组合原始路径并规范化
+                    src_path = os.path.normpath(os.path.join(takeout_root_dir, att_url))
+
+                    # 简单的文件存在性检查
+                    if os.path.exists(src_path):
+                        shutil.copy2(src_path, assets_folder)
+                    else:
+                        print(f"  ⚠️ 附件缺失: {att_url}")
 
         except ValueError as ve:
-            # 逻辑错误（如时间戳倒流），跳过当前文件，继续下一个
             print(f"  ⚠️ 数据校验失败: {ve} (已跳过)")
-            continue 
+            continue
 
         except (FileNotFoundError, PermissionError) as fe:
-            # 文件读写基础错误
             print(f"\n  ❌ 文件操作错误: {fe}")
             continue
 
         except Exception as e:
-            # 其他未知错误（如解析崩溃），记录并继续
             print(f"  ❌ 处理出错: {e} (已跳过)")
             continue
 
