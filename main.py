@@ -328,6 +328,8 @@ def fuzzy_match(query, candidates):
         # 情况 B: 命中唯一结果 -> 成功，提前返回
         if len(candidates) == 1:
             score = fuzz.ratio(query, candidates[0])
+            if score < 50:  # 如果相似度过低，可能是误匹配，继续尝试下一个片段
+                continue
             print(f"模糊匹配成功: {len(seg)}/{len(candidates[0])} , Similarity Score: {score}")
             return candidates[0]
             
