@@ -248,9 +248,9 @@ def load_takeout_index(json_path: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             user_index[f"{clean_title}_{current_count - 1}"] = entry
 
         try:  # 建立助理索引
-            assistant_text = entry['safeHtmlItem'][-1]['html']
-            # 注意：这里直接用最后一个,但实际上忽略了潜在的多回复
-            assistant_index[assistant_text] = entry
+            for item in entry['safeHtmlItem']:
+                assistant_text = item['html']
+                assistant_index[assistant_text] = entry
 
         except Exception as e:
             # 抓住不存在条目错误
@@ -438,11 +438,6 @@ def build_conversation_master_data(
         # 获取关键数据
         timestamp = datetime.fromisoformat(matched_entry['time']) if matched_entry else None
         # fromisoformat会帮我们检查matched_entry['time']拿到的是不是合法的时间格式
-        raw_html = None
-        if matched_entry and 'safeHtmlItem' in matched_entry:
-             # Takeout 的 HTML 藏在 safeHtmlItem 列表里
-             if len(matched_entry['safeHtmlItem']) > 0:
-                 raw_html = matched_entry['safeHtmlItem'][0].get('html')
 
         # 检查根据对话顺序，时间戳时间是否是单调递增的，如不是则报错
         if timestamp and last_valid_dt:
@@ -485,18 +480,24 @@ def build_conversation_master_data(
         master_json['messages'].append(msg_user)
 
         # --- 构建 Assistant 消息 ---
-        msg_assistant_id = generate_uuidv7(timestamp + timedelta(seconds=20) if timestamp else datetime.now(timezone.utc))
-        msg_assistant = {
-            "id": msg_assistant_id,
-            "role": "assistant",
-            "parent_id": msg_user_id, # 关联父消息
-            "created_at": None, # 身份为 Assistant，时无时间信息
-            "content": {
-                "text": assistant_txt, # Voyager 的 MD
-                "original_html": raw_html # Takeout 的 HTML
+        # 考虑到可能存在多回复的情况。并且考虑没有匹配到的情况，也保留至少一条Assistant 消息
+        assistant_items = (matched_entry or {}).get('safeHtmlItem') or [{'html': None}]
+        for item in assistant_items: 
+            raw_html = item.get('html')
+
+            msg_assistant_id = generate_uuidv7(timestamp + timedelta(seconds=20) if timestamp else datetime.now(timezone.utc))
+            msg_assistant = {
+                "id": msg_assistant_id,
+                "role": "assistant",
+                "parent_id": msg_user_id, # 关联父消息
+                "created_at": None, # 身份为 Assistant，时无时间信息
+                "content": {
+                    # 仅对对应回复保留Voyager文本，否则置空。无takeout匹配时，也保留Voyager文本。
+                    "text": assistant_txt if not raw_html or fuzzy_match(assistant_txt, [raw_html]) else "", # Voyager 的 MD
+                    "original_html": raw_html # Takeout 的 HTML
+                }
             }
-        }
-        master_json['messages'].append(msg_assistant)
+            master_json['messages'].append(msg_assistant)
 
     return master_json, collected_paths
 
