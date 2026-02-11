@@ -111,7 +111,7 @@ def parse_voyager_md(md_content):
 
     # 使用正则分割，保留分割符以便后续调试（这里直接split丢弃分割符即可）
     # 注意：前面已经清洗了 footer，所以最后一个 Turn 应该是干净的
-    parts = re.split(r'## Turn \d+', md_content)
+    parts = re.split(r'\n\n## Turn \d+\n\n', md_content)
     
     # parts[0] 是 header，跳过
     for part in parts[1:]: 
