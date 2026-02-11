@@ -172,7 +172,8 @@ def count_attachments(user_text):
 # 识别 takeout 中的附件
 def extract_attachments(matched_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    从 matched_entry 中提取附件列表并校验数量。
+    从 matched_entry 中提取附件列表。
+    通过创建新字典返回，避免污染原始数据。
     """
     # 1. 获取 subtitles 字段，若无则直接返回空列表
     subtitles = matched_entry.get("subtitles")
@@ -195,15 +196,19 @@ def extract_attachments(matched_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
     if len(attachments) != expected_count:
         raise ValueError(f"附件数量校验失败: 标称 {expected_count}, 实际 {len(attachments)}")
     '''
-    
-    # 对附件json对象和文件名的检查，保留真正能用的文件名，其它要不要都无所谓
+
+    cleaned_attachments = []
     for attachment in attachments:
-        if attachment["name"].startswith("-  "):
-            attachment["name"] = attachment["name"][3:]
-        else:
-            raise ValueError(f"附件名称校验失败: {attachment['name']}")
+        name = attachment["name"]
+        
+        # 错误由底层直接抛出中断
+        if not name.startswith("-  "):
+            raise ValueError(f"附件名称校验失败: {name}")
+            
+        # 核心修复：解包原字典并覆写 name，生成一个全新的字典对象加入列表
+        cleaned_attachments.append({**attachment, "name": name[3:]})
     
-    return attachments
+    return cleaned_attachments
 
 
 def load_takeout_index(json_path: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -330,7 +335,7 @@ def fuzzy_match(query, candidates):
             score = fuzz.ratio(query, candidates[0])
             if score > 35:
                 if score < 50:
-                    print(f"警告：匹配程度较低，{len(seg)}/{len(candidates[0])} , Similarity Score: {score}")
+                    print(f"⚠️ 警告：匹配程度较低，{len(seg)}/{len(candidates[0])} , Similarity Score: {score}")
                 return candidates[0]
             break
             
@@ -426,10 +431,10 @@ def build_conversation_master_data(
             # 当精确查找无结果/多结果时，直接扔给assistant_txt的模糊查找
             # assistant_txt长度长，结构多，格式不一致，适合模糊查找
             # --- 2. 尝试模糊查找 ---
-            print(f"🔄 Turn {i+1}: 用户提示词 '{user_txt[:10]}...'精确匹配失败，尝试助手回复 '{assistant_txt[:10]}...'模糊查找")
+            #print(f"🔄 Turn {i+1}: 用户提示词 '{user_txt[:10]}...'精确匹配失败，尝试助手回复 '{assistant_txt[:10]}...'模糊查找")
             fuzzy_key = fuzzy_match(assistant_txt, assistant_keys_cache)
             if fuzzy_key:
-                print(f"   ✅ 模糊匹配成功: '{fuzzy_key[:20]}...'")
+                #print(f"   ✅ 模糊匹配成功: '{fuzzy_key[:20]}...'")
                 matched_entry = assistant_index[fuzzy_key]
             else:
                 print(f"   ❌ 模糊匹配失败，无法找到对应的时间戳。")
@@ -461,7 +466,7 @@ def build_conversation_master_data(
         takeout_attachments = extract_attachments(matched_entry)
 
         if voyager_attachment_count > 0 or takeout_attachments:
-            print(f"存在附件，voyager数量为{voyager_attachment_count}，takeout数量为{len(takeout_attachments)}")
+            #print(f"存在附件，voyager数量为{voyager_attachment_count}，takeout数量为{len(takeout_attachments)}")
             if voyager_attachment_count != len(takeout_attachments):
                 raise ValueError("附件数量不匹配")
             collected_paths.extend(att["url"] for att in takeout_attachments)
