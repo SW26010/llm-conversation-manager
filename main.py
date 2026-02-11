@@ -509,7 +509,6 @@ TAKEOUT_FILE_PATH = os.path.join("data", "google-takeout", "我的活动记录.j
 OUTPUT_FOLDER = os.path.join("data", "output")
 
 
-
 def main():
     """
     主处理流程：加载索引 -> 遍历 Markdown -> 合并数据 -> 导出 JSON 与附件
@@ -534,6 +533,10 @@ def main():
     total_files = len(md_files)
     print(f"📂 扫描到 {total_files} 个 Markdown 文件，开始处理...\n")
 
+    # --- 新增：初始化统计变量 ---
+    success_count = 0
+    error_files = []
+
     # 2. 批量遍历处理
     for i, md_file_path in enumerate(md_files):
         file_name = os.path.basename(md_file_path)
@@ -550,6 +553,7 @@ def main():
             file_id = voyager_data.get('meta', {}).get('id')
             if not file_id:
                 print("  ⚠️ 跳过: 元数据缺失 ID")
+                error_files.append(file_name)  # 新增：记录出错/跳过的文件
                 continue
 
             # --- 核心逻辑合并 ---
@@ -604,20 +608,31 @@ def main():
                         shutil.copy2(src_path, assets_folder)
                     else:
                         print(f"  ⚠️ 附件缺失: {att_url}")
+            
+            # --- 新增：顺利走完所有流程，计数 +1 ---
+            success_count += 1
 
         except ValueError as ve:
             print(f"  ⚠️ 数据校验失败: {ve} (已跳过)")
+            error_files.append(file_name)  # 新增：记录出错文件
             continue
 
         except (FileNotFoundError, PermissionError) as fe:
             print(f"\n  ❌ 文件操作错误: {fe}")
+            error_files.append(file_name)  # 新增：记录出错文件
             continue
 
         except Exception as e:
             print(f"  ❌ 处理出错: {e} (已跳过)")
+            error_files.append(file_name)  # 新增：记录出错文件
             continue
 
     print(f"\n🎉 批量处理完成！结果已保存在: {OUTPUT_FOLDER}")
+    
+    # --- 新增：最终统计输出 ---
+    print(f"已正确处理 {success_count}/{total_files} 个md文件。")
+    if error_files:
+        print(f"出错文件名：{', '.join(error_files)}")
 
 if __name__ == "__main__":
     main()
