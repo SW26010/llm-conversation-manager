@@ -248,7 +248,8 @@ def load_takeout_index(json_path: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
             user_index[f"{clean_title}_{current_count - 1}"] = entry
 
         try:  # 建立助理索引
-            assistant_text = entry['safeHtmlItem'][0]['html']
+            assistant_text = entry['safeHtmlItem'][-1]['html']
+            # 注意：这里直接用最后一个,但实际上忽略了潜在的多回复
             assistant_index[assistant_text] = entry
 
         except Exception as e:
