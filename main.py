@@ -334,7 +334,7 @@ def fuzzy_match(query, candidates):
         if len(candidates) == 1:
             score = fuzz.ratio(query, candidates[0])
             if score > 35:
-                if score < 50:
+                if score < 45:
                     print(f"⚠️ 警告：匹配程度较低，{len(seg)}/{len(candidates[0])} , Similarity Score: {score}")
                 return candidates[0]
             break
@@ -596,7 +596,10 @@ def main():
             item_folder_path = os.path.join(OUTPUT_FOLDER, folder_name)
 
             # 创建条目专属文件夹
-            os.makedirs(item_folder_path, exist_ok=True)
+            try:
+                os.makedirs(item_folder_path)
+            except FileExistsError:
+                print(f"⚠️ 目录已存在，内容将被覆盖：{folder_name}")
 
             # --- 写入结果 (data.json) ---
             output_json_path = os.path.join(item_folder_path, "data.json")
