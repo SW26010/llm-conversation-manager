@@ -22,12 +22,12 @@ This project is a tool to manage LLM conversations.
 
 ## TODO
 
-- [ ] Support attachments (users input pictures, files, etc.)
-- [ ] Batch archiving from multiple Voyager exports
+- [x] Support attachments (users input pictures, files, etc.)
+- [x] Batch archiving from multiple Voyager exports
 - [ ] Incremental archiving without duplication
 
 ## Future Plans
+- [ ] A new, simple plan: put the converison ID into the original google takeout json.
+- [ ] Import, export, and conversion functions for multiple formats. like [Openrouter](https://openrouter.ai/) [RikkaHub](https://github.com/rikkahub/rikkahub)
 - [ ] Support Gemini Deepresearch export
 - [ ] Support SQL
-- [ ] Support [Openrouter](https://openrouter.ai/) export
-- [ ] Support [RikkaHub](https://github.com/rikkahub/rikkahub) export
