@@ -27,6 +27,7 @@ This project is a tool to manage LLM conversations.
 - [ ] Incremental archiving without duplication
 
 ## Future Plans
+- [ ] token counter: estimate token and cost if you had used api
 - [ ] A new, simple plan: put the converison ID into the original google takeout json.
 - [ ] Import, export, and conversion functions for multiple formats. like [Openrouter](https://openrouter.ai/) [RikkaHub](https://github.com/rikkahub/rikkahub)
 - [ ] Support Gemini Deepresearch export
